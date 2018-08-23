@@ -7,10 +7,11 @@ Welcome to cloud_browser's documentation!
 =========================================
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Contents:
+    :maxdepth: 2
 
-
+    Developer
+    User
+    Tiler
 
 Indices and tables
 ==================
