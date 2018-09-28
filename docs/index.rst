@@ -12,6 +12,7 @@ Welcome to cloud_browser's documentation!
     Developer
     User
     Tiler
+    MapUI
 
 Indices and tables
 ==================

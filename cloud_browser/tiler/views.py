@@ -28,10 +28,11 @@ def index(request):
 
 def get_subtable_number(file_name, x, y):
     """
+
     Given coordinates of a tile, this function computes the subtable image number for the requested tile.
 
     Args:
-        file_name (str): Name of the csv files
+        file_name (str): Name of the csv file
         x (int): The x coordinate of the tile at the highest zoom level
         y (int): The y coordinate of the tile at the highest zoom level
 
@@ -40,6 +41,7 @@ def get_subtable_number(file_name, x, y):
         to the coordinate system centered at top left corner of the subtable image. -1 is returned for the
         image number if no tile image is available for the requested coordinates. No change is required for 
         the x coordinate.
+
     """
     if x < 0 or y < 0:
         return -1, None
@@ -67,6 +69,7 @@ def get_subtable_number(file_name, x, y):
 
 def tile_request(request, id, z, x, y):
     """
+
     Tile service that responds to leaflet JS tile requests. Takes in x, y coordinates and
     zoom level of requested tiles and returns the appropriate tile. Tiling is done in memory.
     Each request is mapped to the appropriate subtable image. If the image is already available
@@ -76,13 +79,14 @@ def tile_request(request, id, z, x, y):
     threads spin wait for this thread to complete and then use the loaded image.
     
     Args:
-        request (HTTPRequestObject)
+        request (HTTPRequestObject): Object that encapsulates the HTTP Request to tiler
         x (int): x coordinate of tile
         y (int): y coordinate of tile
         z (int): Zoom level of tile
 
     Returns: 
         HTTPResponse Object containing the tile image
+
     """
     file_name = request.GET.get("file")
     z = int(z) - 3
@@ -125,15 +129,17 @@ def tile_request(request, id, z, x, y):
 
 def progress(request):
     """
+
     Backend service for the upload file progress bar. Updates are made to the global variables
     'progressValue' and 'progressStatus' during the subtable image generation process. These updates
     are sent to the client side by this function
 
     Args:
-        request (HTTPRequestObject)
+        request (HTTPRequestObject): A http request object
 
     Returns:
         A JSON response containing a status message and a progress percentage for csv uploads.
+
     """
     return JsonResponse({'progressValue': progressValue, 'progressStatus': progressStatus})
 
@@ -165,13 +171,14 @@ def get_subtable_dimensions(csv):
 
 def convert_html(document, csv_name):
     """
+    
     Creates the subtable image for the initial few rows of the csv, adds a database record for it
-    if required. The function then hands off the task of creating the remaining subtable images to 
-    convert_remaining_html and returns, thus allowing users to browse the initial rows of the csv 
-    while the rest of it is being processed.
+    if it isn't already present. The function then hands off the task of creating the remaining subtable 
+    images to convert_remaining_html and returns, thus allowing users to browse the initial rows of the 
+    csv while the rest of it is being processed.
 
     Args:
-        document (DocumentObject): Object corresponding to the file's record in the database
+        document (tiler.Document): Document Object corresponding to the file's record in the database
         csv_name (string): Name of the csv file
 
     Returns:
@@ -230,6 +237,7 @@ def convert_html(document, csv_name):
 
 def convert_remaining_html(document, csv_name, csv, rows_per_image, max_width, img1, start_row, add_entries):
     """
+
     Creates subtable images for the remaining rows in the csv. The csv is converted to a set of images by calls to
     multi-threaded calls to convert_subtable_html using batches. The converted
     images are joined with the top portion of the next image by create_subtable_image in order to create evenly sized
@@ -237,13 +245,13 @@ def convert_remaining_html(document, csv_name, csv, rows_per_image, max_width, i
     threads are started. Each worker thread picks a task from the write queue and performs it.
 
     Args:
-        document
-        csv_name
-        rows_per_image
-        width
-        img1
-        start_row
-        add_entries
+        document (tiler.Document): Document object corresponding to the csv file's record in the database
+        csv_name (string): Name of the csv file
+        rows_per_image (int): Number of rows of the csv file to be included in each subtable image
+        max_width (int): Pixel width of the html table to be generated 
+        img1 (numpy.ndarray): The last image partially processed by convert_html as a numpy array 
+        start_row (int): The pixel height upto which the last image was processed
+        add_entries (bool): False if database entries already exist for the subtable image dimensions
 
     Return:
         None
@@ -303,17 +311,23 @@ def convert_remaining_html(document, csv_name, csv, rows_per_image, max_width, i
 
 def convert_subtable_html(df, csv_name, subtable_number, max_width, results=None):
     """
-    Converts a dataframe into an image. The dataframe is first converted to html and the html
-    is the converted to an image using the 'from_string' of wkhtmltoimage library. The image is read into
-    a numpy array and returned or stored into a results array if provided.
+
+    Converts a dataframe into an image. The dataframe is first converted to html and the html is the converted to an
+    image using the 'from_string' of wkhtmltoimage library. The image is read into a numpy array and returned or 
+    stored into a results array if provided. The results array option is used when the function is used with
+    multi-threading to convert a batch of html tables into images. Each worker thread writes the resulting image into
+    the slot specified for it by the subtable number.
+
     Args:
-        df
-        csv_name
-        subtable_number
-        max_width
-        results
+        df (Pandas.DataFrame): Pandas dataframe holding the subtable data
+        csv_name (string): Name of the csv file
+        subtable_number (int): The subtable number used for indexing into the results array
+        max_width (int):
+        results (list): A list into which results are written at the slot indicated by the subtable number
+
     Returns:
-        An image as a numpy array if a results array is provided as an argument. Else returns None.
+        An image as a numpy array if a results list is provided as an argument. Else returns None.
+
     """
     if df.shape[0] == 0:
         return None
@@ -338,17 +352,25 @@ def convert_subtable_html(df, csv_name, subtable_number, max_width, results=None
 
 def create_subtable_image(img1, img2, start_row):
     """
+
     Creates subtable images with dimensions that are mutliples of tiles sizes at the lowest zoom level. Takes
     in two images as numpy arrays and rounds out the first image by concatenating the top part of the second 
     image.
+
     Args:
-        img1, img2
-        start_row
+        img1 (numpy.ndarray): First image
+        img2 (numpy.ndarray): Second image
+        start_row (int): Pixel row number on the first image from where the subtable image should begin
+
     Returns:
-        img: A vertically concatenated and horizontally padded image with dimensions that are multiples of the largest
-        tile size.
-        diff: Number of rows of pixels from the second image that are concatenated with the first image. -1 is returned 
-        if the second image does not exist or if it does not have sufficient rows of pixels to pad out the first image.
+        (tuple): tuple containing:
+        
+            img (numpy.ndarray): A vertically concatenated and horizontally padded image with dimensions that are 
+                multiples of the largest tile size.
+            diff (int): Number of rows of pixels from the second image that are concatenated with the first image. 
+                -1 is returned if the second image does not exist or if it does not have sufficient rows of 
+                pixels to pad out the first image.
+
     """
     h1 = img1.shape[0]
     w1 = img1.shape[1]
@@ -380,19 +402,25 @@ def create_subtable_image(img1, img2, start_row):
 
 def write_subtable_image(pil_img, subtable_path):
     """
+
     Writes subtable images to disk. Called by worker threads.
+
     Args:
-        pil_img
-        subtable_path
+        pil_img (PIL.Image): a python image library image
+        subtable_path (str): File path where the image should be written
+
     Returns:
         None
+
     """
     pil_img.save(subtable_path, 'jpeg', quality=60)
     print("{0} written".format(subtable_path))
 
 def worker():
     """
+
     A worker abstraction that iterates over the write queue and performs the tasks present in it.
+
     """
     while True:
         item = write_q.get()
@@ -403,14 +431,20 @@ def worker():
 
 def add_subtable_entries(document, csv_name, start_st_no, images):
     """
-    Adds bulk database entries corresponding to a list of subtable images.
+
+    Adds bulk database entries corresponding to a list of subtable images. Database entry for each subtable images
+    contains the number of rows and columns in that image. This is useful for quickly mapping tile requests to subtable
+    images.
+
     Args:
-        document
-        csv_name
-        start_st_no
-        images
+        document (Document): Document Object corresponding to the file's record in the database
+        csv_name (string): Name of the csv file
+        start_st_no (int): Subtable number corresponding to the first image in the list
+        images (List): A list of subtable images stored as numpy matrices
+
     Returns:
         None
+
     """
     entries = []
     for i, img in enumerate(images):
@@ -424,12 +458,17 @@ def add_subtable_entries(document, csv_name, start_st_no, images):
 
 def pad_img(img, h, w):
     """
+
     Utility function in order to pad out an image to the required size
+
     Args:
-        img
-        h, w
+        img (numpy.ndarray): An image as a numpy ndarray
+        h (int): height of padded image
+        w (int): width of padded image
+
     Returns:
         The padded image as a numpy array
+
     """
     height, width, channels = img.shape
     new_img = np.full((h, w, channels), 221, dtype=np.uint8)
@@ -438,7 +477,9 @@ def pad_img(img, h, w):
 
 def empty_response():
     """
+
     Utility function for returning an empty tile as a HTTPResponse
+
     """
     red = Image.new('RGBA', (1, 1), (255, 0, 0, 0))
     response = HttpResponse(content_type="image/png")
@@ -447,7 +488,9 @@ def empty_response():
 
 def error_response():
     """
+
     Utility function for returning a red tile as an error response
+
     """
     red = Image.new('RGB', (256, 256), (255, 0, 0))
     response = HttpResponse(content_type="image/jpg")

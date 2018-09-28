@@ -18,11 +18,15 @@ def index(request):
 
 def leaflet(request):
     """
+
     Responds to requests to the csv viewer. Renders html for the csv viewer.
+
     Args:
-        request: HTTPRequest object
+        request (HTTPRequest): a http request object
+
     Returns:
         HTTPResponse containing html for the leaflet JS based csv viewer 
+
     """
     file_name = request.GET.get("file")
 
@@ -34,12 +38,16 @@ def leaflet(request):
 
 def tilecount(request):
     """
+
     Utility function used by the front end slider defined in 'leaflet_map.html'. Returns the number of
     rows of tiles available for the current csv. This value is returned to the client.
+
     Args:
-        request: HTTPRequest object
+        request (HTTPRequest): a http request object
+
     Returns:
         Json response containing the number of tiles available for the current csv
+
     """
     file_name = request.GET.get("file")
     tilecount = TiledDocument.objects.filter(document__file_name=file_name).aggregate(Sum('tile_count_on_y'))['tile_count_on_y__sum']
@@ -48,12 +56,16 @@ def tilecount(request):
 @method_decorator(csrf_exempt)
 def delete(request):
     """
+
     Response function for a post request to delete a csv file. The csrf_exempt decorator is required in
     order for a post requested generated without a form to work correctly.
+
     Args:
-        request: HTTPRequest object
+        request (HTTPRequest): a http request object
+
     Returns:
         Success message
+
     """
     file_name = request.POST.get("file_name")
     Document.objects.get(file_name=file_name).delete()
@@ -64,14 +76,15 @@ def delete(request):
 
 def check_csv(file_name):
     """
+
     Check if subtable images for requested csv are present on disk, else create them.
 
     Args:
-        filename (string): Name of the csv file
+        filename (str): Name of the csv file
 
     Returns:
-        rows: Number of rows in the csv file
-        columns: Number of columns in the csv file
+        The number of rows and number of columns in the csv file
+
     """
     doc = Document.objects.get(file_name=file_name)
     rows, columns = 0, 0
@@ -88,8 +101,10 @@ def check_csv(file_name):
 
 def check_disk_usage():
     """
+
     Check if disk usage exceeds the maximum allowed. If yes, delete subtable images of csv
     files in least recently used order until disk usage is below the maximum.
+
     """
     csv_sizes = {}
     total_size = 0
@@ -113,11 +128,15 @@ def check_disk_usage():
 
 def get_directory_size(dir_path):
     """
+
     Utility function to get the size of a directory
+
     Args:
-        dir_path: Path to the directory
+        dir_path (str): Path to the directory
+
     Returns:
         Size of directory in MB
+
     """
     total_size = 0
     for path, dirs, files in os.walk(dir_path):
