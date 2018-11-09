@@ -15,7 +15,7 @@ RUN apt-get install -y vim
 
 # RUN apt-get install -y xvfb
 
-WORKDIR /MagickTable
+WORKDIR /cloud_browser
 ADD . /MagickTable
 RUN pip install --trusted-host pypi.python.org -r requirements.txt
 RUN python manage.py makemigrations
