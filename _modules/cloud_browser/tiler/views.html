@@ -1,0 +1,583 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>cloud_browser.tiler.views &#8212; cloud_browser  documentation</title>
+    <link rel="stylesheet" href="../../../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+   
+  <link rel="stylesheet" href="../../../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head>
+  <body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for cloud_browser.tiler.views</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">math</span>
+<span class="kn">import</span> <span class="nn">queue</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">threading</span>
+<span class="kn">import</span> <span class="nn">io</span>
+
+<span class="kn">import</span> <span class="nn">imgkit</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">from</span> <span class="nn">PIL</span> <span class="k">import</span> <span class="n">Image</span>
+<span class="kn">from</span> <span class="nn">django.conf</span> <span class="k">import</span> <span class="n">settings</span>
+<span class="kn">from</span> <span class="nn">django.db.models</span> <span class="k">import</span> <span class="n">F</span><span class="p">,</span> <span class="n">Sum</span><span class="p">,</span> <span class="n">Max</span>
+<span class="kn">from</span> <span class="nn">django.http</span> <span class="k">import</span> <span class="n">HttpResponse</span><span class="p">,</span> <span class="n">JsonResponse</span>
+<span class="kn">from</span> <span class="nn">django.utils.cache</span> <span class="k">import</span> <span class="n">add_never_cache_headers</span>
+
+<span class="c1">#from tiler.models.Document import TiledDocument</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+
+<span class="n">max_chars_per_column</span> <span class="o">=</span> <span class="mi">2000</span>
+<span class="n">st_images</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="n">st_images_max</span> <span class="o">=</span> <span class="mi">25</span>
+<span class="n">cv</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Lock</span><span class="p">()</span>
+<span class="n">write_q</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">Queue</span><span class="p">()</span>
+<span class="n">progressStatus</span> <span class="o">=</span> <span class="s2">&quot;Uploading File&quot;</span>
+<span class="n">progressValue</span> <span class="o">=</span> <span class="mi">10</span>
+
+<span class="k">def</span> <span class="nf">index</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">HttpResponse</span><span class="p">(</span><span class="s2">&quot;Index page of tiler&quot;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="get_subtable_number"><a class="viewcode-back" href="../../../Tiler.html#cloud_browser.tiler.views.get_subtable_number">[docs]</a><span class="k">def</span> <span class="nf">get_subtable_number</span><span class="p">(</span><span class="n">file_name</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">    Given coordinates of a tile, this function computes the subtable image number for the requested tile.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        file_name (str): Name of the csv file</span>
+<span class="sd">        x (int): The x coordinate of the tile at the highest zoom level</span>
+<span class="sd">        y (int): The y coordinate of the tile at the highest zoom level</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        The subtable image number that the requested tile belongs to and the y coordinate,  adjusted relative</span>
+<span class="sd">        to the coordinate system centered at top left corner of the subtable image. -1 is returned for the</span>
+<span class="sd">        image number if no tile image is available for the requested coordinates. No change is required for </span>
+<span class="sd">        the x coordinate.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">x</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">y</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="kc">None</span>
+
+    <span class="k">if</span> <span class="n">y</span> <span class="o">&gt;</span> <span class="n">TiledDocument</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">document__file_name</span><span class="o">=</span><span class="n">file_name</span><span class="p">)</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span><span class="n">Sum</span><span class="p">(</span><span class="s1">&#39;tile_count_on_y&#39;</span><span class="p">))[</span><span class="s1">&#39;tile_count_on_y__sum&#39;</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="kc">None</span>
+    <span class="n">tile_details</span> <span class="o">=</span> <span class="n">TiledDocument</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">document__file_name</span><span class="o">=</span><span class="n">file_name</span><span class="p">)</span><span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="s1">&#39;subtable_number&#39;</span><span class="p">)</span>
+
+    <span class="n">subtable_number</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">agg_rows</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">tile_details</span><span class="p">)):</span>
+        <span class="n">agg_rows</span> <span class="o">=</span> <span class="n">agg_rows</span> <span class="o">+</span> <span class="n">tile_details</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">tile_count_on_y</span>
+        <span class="k">if</span> <span class="n">y</span> <span class="o">&lt;</span> <span class="n">agg_rows</span><span class="p">:</span>
+            <span class="n">subtable_number</span> <span class="o">=</span> <span class="n">i</span>
+            <span class="n">y</span> <span class="o">=</span> <span class="n">y</span> <span class="o">+</span> <span class="n">tile_details</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">tile_count_on_y</span> <span class="o">-</span> <span class="n">agg_rows</span>
+            <span class="k">break</span>
+        <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">tile_details</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="kc">None</span>
+    
+    <span class="n">tile_count_on_x</span> <span class="o">=</span> <span class="n">tile_details</span><span class="p">[</span><span class="n">subtable_number</span><span class="p">]</span><span class="o">.</span><span class="n">tile_count_on_x</span>
+    <span class="k">if</span> <span class="n">x</span> <span class="o">&gt;=</span> <span class="n">tile_count_on_x</span><span class="p">:</span>
+        <span class="k">return</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="kc">None</span>
+
+    <span class="k">return</span> <span class="n">subtable_number</span><span class="p">,</span> <span class="n">y</span></div>
+
+<div class="viewcode-block" id="tile_request"><a class="viewcode-back" href="../../../Tiler.html#cloud_browser.tiler.views.tile_request">[docs]</a><span class="k">def</span> <span class="nf">tile_request</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="nb">id</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">    Tile service that responds to leaflet JS tile requests. Takes in x, y coordinates and</span>
+<span class="sd">    zoom level of requested tiles and returns the appropriate tile. Tiling is done in memory.</span>
+<span class="sd">    Each request is mapped to the appropriate subtable image. If the image is already available</span>
+<span class="sd">    in memory, appropriate tile is cut out and returned as a JPEG, else the image is loaded into</span>
+<span class="sd">    memory first. As multiple simultaneous tile requests are made to the same subtable image, a </span>
+<span class="sd">    lock is used to ensure that only one thread reads the image from disk into memory. The other</span>
+<span class="sd">    threads spin wait for this thread to complete and then use the loaded image.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        request (HTTPRequestObject): Object that encapsulates the HTTP Request to tiler</span>
+<span class="sd">        x (int): x coordinate of tile</span>
+<span class="sd">        y (int): y coordinate of tile</span>
+<span class="sd">        z (int): Zoom level of tile</span>
+
+<span class="sd">    Returns: </span>
+<span class="sd">        HTTPResponse Object containing the tile image</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">file_name</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">GET</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;file&quot;</span><span class="p">)</span>
+    <span class="n">z</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">z</span><span class="p">)</span> <span class="o">-</span> <span class="mi">3</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2</span> <span class="o">**</span> <span class="p">(</span><span class="mi">10</span> <span class="o">-</span> <span class="n">z</span><span class="p">))</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">y</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2</span> <span class="o">**</span> <span class="p">(</span><span class="mi">10</span> <span class="o">-</span> <span class="n">z</span><span class="p">))</span>
+
+    <span class="n">subtable_number</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="n">get_subtable_number</span><span class="p">(</span><span class="n">file_name</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">subtable_number</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">empty_response</span><span class="p">()</span>
+    <span class="n">subtable_name</span> <span class="o">=</span> <span class="n">file_name</span><span class="p">[:</span><span class="o">-</span><span class="mi">4</span><span class="p">]</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">subtable_number</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;.jpg&#39;</span>
+
+    <span class="n">img</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">subtable_name</span> <span class="ow">in</span> <span class="n">st_images</span><span class="p">:</span>
+        <span class="n">img</span> <span class="o">=</span> <span class="n">st_images</span><span class="p">[</span><span class="n">subtable_name</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">cv</span><span class="o">.</span><span class="n">acquire</span><span class="p">(</span><span class="n">blocking</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">MEDIA_ROOT</span><span class="p">,</span> <span class="s1">&#39;tiles&#39;</span><span class="p">,</span> <span class="n">file_name</span><span class="p">[:</span><span class="o">-</span><span class="mi">4</span><span class="p">],</span> <span class="n">subtable_name</span><span class="p">)</span>
+            <span class="n">img</span> <span class="o">=</span> <span class="n">Image</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+            <span class="n">img</span><span class="o">.</span><span class="n">load</span><span class="p">()</span>
+            <span class="n">keys</span> <span class="o">=</span> <span class="n">st_images</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">keys</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">st_images_max</span><span class="p">:</span>
+                <span class="n">st_images</span><span class="o">.</span><span class="n">popitem</span><span class="p">()</span>
+            <span class="n">st_images</span><span class="p">[</span><span class="n">subtable_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">img</span>
+            <span class="n">cv</span><span class="o">.</span><span class="n">release</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">while</span> <span class="n">subtable_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">st_images</span><span class="p">:</span>
+                <span class="k">pass</span>
+            <span class="n">img</span> <span class="o">=</span> <span class="n">st_images</span><span class="p">[</span><span class="n">subtable_name</span><span class="p">]</span>
+        
+    <span class="n">tile_size</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">**</span> <span class="p">(</span><span class="mi">18</span> <span class="o">-</span> <span class="n">z</span><span class="p">)</span>
+    <span class="n">tile_img</span> <span class="o">=</span> <span class="n">img</span><span class="o">.</span><span class="n">crop</span><span class="p">((</span><span class="n">x</span><span class="o">*</span><span class="mi">256</span><span class="p">,</span> <span class="n">y</span><span class="o">*</span><span class="mi">256</span><span class="p">,</span> <span class="n">x</span><span class="o">*</span><span class="mi">256</span> <span class="o">+</span> <span class="n">tile_size</span><span class="p">,</span> <span class="n">y</span><span class="o">*</span><span class="mi">256</span> <span class="o">+</span> <span class="n">tile_size</span><span class="p">))</span>
+    <span class="n">tile_img</span> <span class="o">=</span> <span class="n">tile_img</span><span class="o">.</span><span class="n">resize</span><span class="p">((</span><span class="mi">256</span><span class="p">,</span><span class="mi">256</span><span class="p">))</span>
+        
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="n">HttpResponse</span><span class="p">(</span><span class="n">content_type</span><span class="o">=</span><span class="s2">&quot;image/jpg&quot;</span><span class="p">)</span>
+        <span class="n">tile_img</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">response</span><span class="p">,</span> <span class="s1">&#39;jpeg&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">response</span>
+    <span class="k">except</span> <span class="ne">IOError</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">error_response</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="progress"><a class="viewcode-back" href="../../../Tiler.html#cloud_browser.tiler.views.progress">[docs]</a><span class="k">def</span> <span class="nf">progress</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">    Backend service for the upload file progress bar. Updates are made to the global variables</span>
+<span class="sd">    &#39;progressValue&#39; and &#39;progressStatus&#39; during the subtable image generation process. These updates</span>
+<span class="sd">    are sent to the client side by this function</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        request (HTTPRequestObject): A http request object</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        A JSON response containing a status message and a progress percentage for csv uploads.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">JsonResponse</span><span class="p">({</span><span class="s1">&#39;progressValue&#39;</span><span class="p">:</span> <span class="n">progressValue</span><span class="p">,</span> <span class="s1">&#39;progressStatus&#39;</span><span class="p">:</span> <span class="n">progressStatus</span><span class="p">})</span></div>
+
+<div class="viewcode-block" id="get_subtable_dimensions"><a class="viewcode-back" href="../../../Tiler.html#cloud_browser.tiler.views.get_subtable_dimensions">[docs]</a><span class="k">def</span> <span class="nf">get_subtable_dimensions</span><span class="p">(</span><span class="n">csv</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Processes structure and data within csv files in order to calculate how many rows to use per subtable</span>
+<span class="sd">    image and the width that should be set for the generated html table.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        csv (Pandas.DataFrame): CSV data stored in a pandas dataframe</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        The number of rows per image and width of html table to be generated</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">chars_per_row</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">max_lines_per_row</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">csv</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="n">max_len</span> <span class="o">=</span> <span class="n">csv</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="nb">len</span><span class="p">)</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">max_len</span> <span class="o">&gt;</span> <span class="mi">50</span><span class="p">:</span>
+            <span class="n">lines_per_row</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">max_len</span> <span class="o">/</span> <span class="mi">200</span><span class="p">)</span>
+            <span class="n">max_lines_per_row</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">max_lines_per_row</span><span class="p">,</span> <span class="n">lines_per_row</span><span class="p">)</span>
+            <span class="n">max_len</span> <span class="o">=</span> <span class="mi">50</span>
+        <span class="n">chars_per_row</span> <span class="o">=</span> <span class="n">chars_per_row</span> <span class="o">+</span> <span class="n">max_len</span>
+
+    <span class="n">max_width</span> <span class="o">=</span> <span class="n">chars_per_row</span> <span class="o">*</span> <span class="mi">5</span>
+    <span class="n">rows_per_image</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="mi">400</span> <span class="o">/</span> <span class="n">max_lines_per_row</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">rows_per_image</span><span class="p">,</span> <span class="n">max_width</span></div>
+
+<div class="viewcode-block" id="convert_html"><a class="viewcode-back" href="../../../Tiler.html#cloud_browser.tiler.views.convert_html">[docs]</a><span class="k">def</span> <span class="nf">convert_html</span><span class="p">(</span><span class="n">document</span><span class="p">,</span> <span class="n">csv_name</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    </span>
+<span class="sd">    Creates the subtable image for the initial few rows of the csv, adds a database record for it</span>
+<span class="sd">    if it isn&#39;t already present. The function then hands off the task of creating the remaining subtable </span>
+<span class="sd">    images to convert_remaining_html and returns, thus allowing users to browse the initial rows of the </span>
+<span class="sd">    csv while the rest of it is being processed.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        document (tiler.Document): Document Object corresponding to the file&#39;s record in the database</span>
+<span class="sd">        csv_name (string): Name of the csv file</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Number of rows and columns in the csv</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">global</span> <span class="n">progressValue</span>
+    <span class="k">global</span> <span class="n">progressStatus</span>
+    <span class="n">progressValue</span> <span class="o">=</span> <span class="s2">&quot;25&quot;</span>
+    <span class="n">progressStatus</span> <span class="o">=</span> <span class="s2">&quot;Processing CSV&quot;</span>
+    <span class="n">add_entries</span> <span class="o">=</span> <span class="ow">not</span> <span class="n">TiledDocument</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">document</span><span class="o">=</span><span class="n">document</span><span class="p">)</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span>
+    <span class="n">csv</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">MEDIA_ROOT</span><span class="p">,</span> <span class="s2">&quot;documents&quot;</span><span class="p">,</span> <span class="n">csv_name</span><span class="p">))</span>
+    <span class="n">csv</span> <span class="o">=</span> <span class="n">csv</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">str</span><span class="p">)</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">str</span><span class="p">[:</span><span class="n">max_chars_per_column</span><span class="p">])</span>
+    
+    <span class="n">rows_per_image</span><span class="p">,</span> <span class="n">max_width</span> <span class="o">=</span> <span class="n">get_subtable_dimensions</span><span class="p">(</span><span class="n">csv</span><span class="p">)</span>
+
+    <span class="n">os</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">MEDIA_ROOT</span><span class="p">,</span> <span class="s1">&#39;tiles&#39;</span><span class="p">,</span> <span class="n">csv_name</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="o">-</span><span class="mi">4</span><span class="p">]))</span>
+
+    <span class="n">df</span> <span class="o">=</span> <span class="n">csv</span><span class="p">[</span><span class="mi">0</span> <span class="p">:</span> <span class="n">rows_per_image</span><span class="p">]</span>
+
+    <span class="n">progressValue</span> <span class="o">=</span> <span class="s2">&quot;50&quot;</span>
+    <span class="n">progressStatus</span> <span class="o">=</span> <span class="s2">&quot;Creating image for first &quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">rows_per_image</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;rows&quot;</span> 
+    <span class="n">img1</span> <span class="o">=</span> <span class="n">convert_subtable_html</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">csv_name</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">max_width</span><span class="p">)</span>
+    
+    <span class="n">img2</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">csv</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">rows_per_image</span><span class="p">:</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">csv</span><span class="p">[</span><span class="n">rows_per_image</span> <span class="p">:</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">rows_per_image</span><span class="p">]</span>
+        <span class="n">img2</span> <span class="o">=</span> <span class="n">convert_subtable_html</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">csv_name</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">max_width</span><span class="p">)</span>
+    
+    <span class="n">progressValue</span> <span class="o">=</span> <span class="s2">&quot;80&quot;</span>
+    <span class="n">progressStatus</span> <span class="o">=</span> <span class="s2">&quot;Loading image into memory&quot;</span> 
+    <span class="n">img</span><span class="p">,</span> <span class="n">start_row</span> <span class="o">=</span> <span class="n">create_subtable_image</span><span class="p">(</span><span class="n">img1</span><span class="p">,</span> <span class="n">img2</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="n">pil_img</span> <span class="o">=</span> <span class="n">Image</span><span class="o">.</span><span class="n">fromarray</span><span class="p">(</span><span class="n">img</span><span class="p">)</span>
+    <span class="n">keys</span> <span class="o">=</span> <span class="n">st_images</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+    <span class="n">subtable_name</span> <span class="o">=</span> <span class="n">csv_name</span><span class="p">[:</span><span class="o">-</span><span class="mi">4</span><span class="p">]</span> <span class="o">+</span> <span class="s1">&#39;0.jpg&#39;</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">keys</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">st_images_max</span><span class="p">:</span>
+        <span class="n">st_images</span><span class="o">.</span><span class="n">popitem</span><span class="p">()</span>
+    <span class="n">st_images</span><span class="p">[</span><span class="n">subtable_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">pil_img</span>
+    
+    <span class="n">progressValue</span> <span class="o">=</span> <span class="s2">&quot;90&quot;</span>
+    <span class="n">progressStatus</span> <span class="o">=</span> <span class="s2">&quot;Writing image to disk&quot;</span> 
+    <span class="n">subtable_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">MEDIA_ROOT</span><span class="p">,</span> <span class="s1">&#39;tiles&#39;</span><span class="p">,</span> <span class="n">csv_name</span><span class="p">[:</span><span class="o">-</span><span class="mi">4</span><span class="p">],</span> <span class="n">subtable_name</span><span class="p">)</span>
+    <span class="n">pil_img</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">subtable_path</span><span class="p">,</span> <span class="s1">&#39;jpeg&#39;</span><span class="p">,</span> <span class="n">quality</span><span class="o">=</span><span class="mi">60</span><span class="p">)</span>
+    
+    <span class="k">if</span> <span class="n">add_entries</span><span class="p">:</span>
+        <span class="n">add_subtable_entries</span><span class="p">(</span><span class="n">document</span><span class="p">,</span> <span class="n">csv_name</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="p">[</span><span class="n">img</span><span class="p">])</span>
+
+    <span class="k">if</span> <span class="n">img2</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">convert_remaining_html</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="n">document</span><span class="p">,</span> <span class="n">csv_name</span><span class="p">,</span> <span class="n">csv</span><span class="p">,</span> <span class="n">rows_per_image</span><span class="p">,</span> <span class="n">max_width</span><span class="p">,</span> 
+            <span class="n">img2</span><span class="p">,</span> <span class="n">start_row</span><span class="p">,</span> <span class="n">add_entries</span><span class="p">))</span>
+        <span class="n">t</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+
+    <span class="n">progressStatus</span> <span class="o">=</span> <span class="s2">&quot;Uploading File&quot;</span>
+    <span class="n">progressValue</span> <span class="o">=</span> <span class="mi">10</span>
+    <span class="k">return</span> <span class="n">csv</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">csv</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span></div>
+
+<div class="viewcode-block" id="convert_remaining_html"><a class="viewcode-back" href="../../../Tiler.html#cloud_browser.tiler.views.convert_remaining_html">[docs]</a><span class="k">def</span> <span class="nf">convert_remaining_html</span><span class="p">(</span><span class="n">document</span><span class="p">,</span> <span class="n">csv_name</span><span class="p">,</span> <span class="n">csv</span><span class="p">,</span> <span class="n">rows_per_image</span><span class="p">,</span> <span class="n">max_width</span><span class="p">,</span> <span class="n">img1</span><span class="p">,</span> <span class="n">start_row</span><span class="p">,</span> <span class="n">add_entries</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">    Creates subtable images for the remaining rows in the csv. The csv is converted to a set of images by calls to</span>
+<span class="sd">    multi-threaded calls to convert_subtable_html using batches. The converted</span>
+<span class="sd">    images are joined with the top portion of the next image by create_subtable_image in order to create evenly sized</span>
+<span class="sd">    tiles. Writing each such subtable image to disk is considered a task and is added to a write queue. A number of worker </span>
+<span class="sd">    threads are started. Each worker thread picks a task from the write queue and performs it.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        document (tiler.Document): Document object corresponding to the csv file&#39;s record in the database</span>
+<span class="sd">        csv_name (string): Name of the csv file</span>
+<span class="sd">        rows_per_image (int): Number of rows of the csv file to be included in each subtable image</span>
+<span class="sd">        max_width (int): Pixel width of the html table to be generated </span>
+<span class="sd">        img1 (numpy.ndarray): The last image partially processed by convert_html as a numpy array </span>
+<span class="sd">        start_row (int): The pixel height upto which the last image was processed</span>
+<span class="sd">        add_entries (bool): False if database entries already exist for the subtable image dimensions</span>
+
+<span class="sd">    Return:</span>
+<span class="sd">        None</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">number_of_subtables</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">csv</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">/</span> <span class="n">rows_per_image</span><span class="p">)</span>
+    <span class="n">batch_size</span> <span class="o">=</span> <span class="mi">10</span>
+    <span class="n">no_of_batches</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">number_of_subtables</span> <span class="o">/</span> <span class="n">batch_size</span><span class="p">)</span>
+    
+    <span class="n">num_write_threads</span> <span class="o">=</span> <span class="mi">10</span>
+    <span class="n">write_threads</span> <span class="o">=</span> <span class="p">[]</span>
+    
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">num_write_threads</span><span class="p">):</span>
+        <span class="n">w</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">worker</span><span class="p">)</span>
+        <span class="n">w</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+        <span class="n">write_threads</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">w</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">no_of_batches</span><span class="p">):</span>
+        <span class="n">converted_images</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">batch_size</span>
+        <span class="n">threads</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">batch_size</span><span class="p">):</span>
+            <span class="n">subtable_number</span> <span class="o">=</span> <span class="n">batch_size</span> <span class="o">*</span> <span class="n">i</span> <span class="o">+</span> <span class="n">j</span> <span class="o">+</span> <span class="mi">2</span>
+            <span class="n">df</span> <span class="o">=</span> <span class="n">csv</span><span class="p">[</span><span class="n">subtable_number</span> <span class="o">*</span> <span class="n">rows_per_image</span><span class="p">:</span> <span class="p">(</span><span class="n">subtable_number</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">rows_per_image</span><span class="p">]</span>
+            <span class="n">t</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">convert_subtable_html</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">csv_name</span><span class="p">,</span> <span class="n">j</span><span class="p">,</span> <span class="n">max_width</span><span class="p">,</span> <span class="n">converted_images</span><span class="p">))</span>
+            <span class="n">threads</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+            <span class="n">t</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">threads</span><span class="p">:</span>
+            <span class="n">t</span><span class="o">.</span><span class="n">join</span><span class="p">()</span>
+
+        <span class="n">subtable_images</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">img2</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">converted_images</span><span class="p">):</span>
+            <span class="n">subtable_number</span> <span class="o">=</span> <span class="n">batch_size</span> <span class="o">*</span> <span class="n">i</span> <span class="o">+</span> <span class="n">j</span> <span class="o">+</span> <span class="mi">1</span>
+            <span class="k">if</span> <span class="n">start_row</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">img2</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">subtable_images</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">img2</span><span class="p">)</span>
+                <span class="k">break</span>
+            <span class="n">img</span><span class="p">,</span> <span class="n">start_row</span> <span class="o">=</span> <span class="n">create_subtable_image</span><span class="p">(</span><span class="n">img1</span><span class="p">,</span> <span class="n">img2</span><span class="p">,</span> <span class="n">start_row</span><span class="p">)</span>
+            <span class="n">img1</span> <span class="o">=</span> <span class="n">img2</span>
+            <span class="n">subtable_images</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">img</span><span class="p">)</span>
+            <span class="n">pil_img</span> <span class="o">=</span> <span class="n">Image</span><span class="o">.</span><span class="n">fromarray</span><span class="p">(</span><span class="n">img</span><span class="p">)</span>
+            <span class="n">subtable_name</span> <span class="o">=</span> <span class="n">csv_name</span><span class="p">[:</span><span class="o">-</span><span class="mi">4</span><span class="p">]</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">subtable_number</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;.jpg&#39;</span>
+            <span class="n">subtable_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">MEDIA_ROOT</span><span class="p">,</span> <span class="s1">&#39;tiles&#39;</span><span class="p">,</span> <span class="n">csv_name</span><span class="p">[:</span><span class="o">-</span><span class="mi">4</span><span class="p">],</span> <span class="n">subtable_name</span><span class="p">)</span>
+            <span class="n">keys</span> <span class="o">=</span> <span class="n">st_images</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">keys</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">st_images_max</span><span class="p">:</span>
+                <span class="n">st_images</span><span class="p">[</span><span class="n">subtable_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">pil_img</span>
+            <span class="n">write_q</span><span class="o">.</span><span class="n">put</span><span class="p">((</span><span class="n">pil_img</span><span class="p">,</span> <span class="n">subtable_path</span><span class="p">))</span>
+
+        <span class="k">if</span> <span class="n">add_entries</span><span class="p">:</span>
+            <span class="n">add_subtable_entries</span><span class="p">(</span><span class="n">document</span><span class="p">,</span> <span class="n">csv_name</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">*</span><span class="n">i</span><span class="p">,</span> <span class="n">subtable_images</span><span class="p">)</span>
+
+    <span class="n">write_q</span><span class="o">.</span><span class="n">join</span><span class="p">()</span>
+
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">num_write_threads</span><span class="p">):</span>
+        <span class="n">write_q</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">write_threads</span><span class="p">:</span>
+        <span class="n">w</span><span class="o">.</span><span class="n">join</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="convert_subtable_html"><a class="viewcode-back" href="../../../Tiler.html#cloud_browser.tiler.views.convert_subtable_html">[docs]</a><span class="k">def</span> <span class="nf">convert_subtable_html</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">csv_name</span><span class="p">,</span> <span class="n">subtable_number</span><span class="p">,</span> <span class="n">max_width</span><span class="p">,</span> <span class="n">results</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">    Converts a dataframe into an image. The dataframe is first converted to html and the html is the converted to an</span>
+<span class="sd">    image using the &#39;from_string&#39; of wkhtmltoimage library. The image is read into a numpy array and returned or </span>
+<span class="sd">    stored into a results array if provided. The results array option is used when the function is used with</span>
+<span class="sd">    multi-threading to convert a batch of html tables into images. Each worker thread writes the resulting image into</span>
+<span class="sd">    the slot specified for it by the subtable number.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        df (Pandas.DataFrame): Pandas dataframe holding the subtable data</span>
+<span class="sd">        csv_name (string): Name of the csv file</span>
+<span class="sd">        subtable_number (int): The subtable number used for indexing into the results array</span>
+<span class="sd">        max_width (int):</span>
+<span class="sd">        results (list): A list into which results are written at the slot indicated by the subtable number</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        An image as a numpy array if a results list is provided as an argument. Else returns None.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">df</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">pd</span><span class="o">.</span><span class="n">set_option</span><span class="p">(</span><span class="s1">&#39;display.max_colwidth&#39;</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">html</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">to_html</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">border</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;&lt;td&gt;&#39;</span><span class="p">,</span> <span class="s1">&#39;&lt;td style = &quot;word-wrap: break-word;&#39;</span> <span class="o">+</span> 
+        <span class="s1">&#39; text-align:center; font-family: Times New Roman; font-size: 18;&quot;&gt;&#39;</span><span class="p">)</span>
+    <span class="n">html</span> <span class="o">=</span> <span class="n">html</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;&lt;th&gt;&#39;</span><span class="p">,</span> <span class="s1">&#39;&lt;th style = &quot;background-color: #9cd4e2; text-align: center;&#39;</span> <span class="o">+</span> 
+        <span class="s1">&#39; font-family: Times New Roman; font-size: 18;&quot;&gt;&#39;</span><span class="p">)</span>
+    <span class="n">html</span> <span class="o">=</span> <span class="n">html</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;&lt;table&#39;</span><span class="p">,</span> <span class="s1">&#39;&lt;div style=&quot;width:&#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">max_width</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;px;&quot;&gt;</span><span class="se">\n</span><span class="s1">&lt;table &#39;</span> <span class="o">+</span> 
+        <span class="s1">&#39;style=&quot;border-collapse: collapse;&quot;&#39;</span><span class="p">)</span>
+    <span class="n">html</span> <span class="o">=</span> <span class="n">html</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;&lt;/table&gt;&#39;</span><span class="p">,</span> <span class="s1">&#39;&lt;/table&gt;</span><span class="se">\n</span><span class="s1">&lt;/div&gt;&#39;</span><span class="p">)</span>
+
+    <span class="n">options</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;quality&#39;</span> <span class="p">:</span> <span class="s1">&#39;60&#39;</span>
+    <span class="p">}</span>
+    <span class="n">img</span> <span class="o">=</span> <span class="n">Image</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">io</span><span class="o">.</span><span class="n">BytesIO</span><span class="p">(</span><span class="n">imgkit</span><span class="o">.</span><span class="n">from_string</span><span class="p">(</span><span class="n">html</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="n">options</span><span class="o">=</span><span class="n">options</span><span class="p">)))</span>
+    <span class="n">img_arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">img</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">results</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">results</span><span class="p">[</span><span class="n">subtable_number</span><span class="p">]</span> <span class="o">=</span> <span class="n">img_arr</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">img_arr</span></div>
+
+<div class="viewcode-block" id="create_subtable_image"><a class="viewcode-back" href="../../../Tiler.html#cloud_browser.tiler.views.create_subtable_image">[docs]</a><span class="k">def</span> <span class="nf">create_subtable_image</span><span class="p">(</span><span class="n">img1</span><span class="p">,</span> <span class="n">img2</span><span class="p">,</span> <span class="n">start_row</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">    Creates subtable images with dimensions that are mutliples of tiles sizes at the lowest zoom level. Takes</span>
+<span class="sd">    in two images as numpy arrays and rounds out the first image by concatenating the top part of the second </span>
+<span class="sd">    image.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        img1 (numpy.ndarray): First image</span>
+<span class="sd">        img2 (numpy.ndarray): Second image</span>
+<span class="sd">        start_row (int): Pixel row number on the first image from where the subtable image should begin</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        (tuple): tuple containing:</span>
+<span class="sd">        </span>
+<span class="sd">            img (numpy.ndarray): A vertically concatenated and horizontally padded image with dimensions that are </span>
+<span class="sd">                multiples of the largest tile size.</span>
+<span class="sd">            diff (int): Number of rows of pixels from the second image that are concatenated with the first image. </span>
+<span class="sd">                -1 is returned if the second image does not exist or if it does not have sufficient rows of </span>
+<span class="sd">                pixels to pad out the first image.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">h1</span> <span class="o">=</span> <span class="n">img1</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">w1</span> <span class="o">=</span> <span class="n">img1</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">max_tile_size</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">**</span> <span class="mi">12</span>
+    <span class="n">number_of_rows</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">((</span><span class="n">h1</span> <span class="o">-</span> <span class="n">start_row</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">max_tile_size</span> <span class="o">*</span> <span class="mf">1.0</span><span class="p">)))</span>
+    <span class="n">number_of_cols</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">w1</span> <span class="o">/</span> <span class="p">(</span><span class="n">max_tile_size</span> <span class="o">*</span> <span class="mf">1.0</span><span class="p">)))</span>
+
+    <span class="n">diff</span> <span class="o">=</span> <span class="n">max_tile_size</span> <span class="o">*</span> <span class="n">number_of_rows</span> <span class="o">-</span> <span class="n">h1</span> <span class="o">+</span> <span class="n">start_row</span>
+    
+    <span class="k">if</span> <span class="n">img2</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">img</span> <span class="o">=</span> <span class="n">img1</span><span class="p">[</span><span class="n">start_row</span> <span class="p">:</span> <span class="n">h1</span><span class="p">,</span> <span class="p">:]</span>
+        <span class="n">img</span> <span class="o">=</span> <span class="n">pad_img</span><span class="p">(</span><span class="n">img</span><span class="p">,</span> <span class="n">max_tile_size</span> <span class="o">*</span> <span class="n">number_of_rows</span><span class="p">,</span> <span class="n">max_tile_size</span> <span class="o">*</span> <span class="n">number_of_cols</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">img</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">h2</span> <span class="o">=</span> <span class="n">img2</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">w2</span> <span class="o">=</span> <span class="n">img2</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">h2</span> <span class="o">&lt;</span> <span class="n">diff</span><span class="p">:</span>
+            <span class="n">img</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">h1</span> <span class="o">-</span> <span class="n">start_row</span> <span class="o">+</span> <span class="n">h2</span><span class="p">,</span> <span class="nb">max</span><span class="p">(</span><span class="n">w1</span><span class="p">,</span> <span class="n">w2</span><span class="p">),</span> <span class="mi">3</span><span class="p">),</span> <span class="mi">255</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
+            <span class="n">img</span><span class="p">[:</span><span class="n">h1</span><span class="o">-</span><span class="n">start_row</span><span class="p">,</span> <span class="p">:</span><span class="n">w1</span><span class="p">]</span> <span class="o">=</span> <span class="n">img1</span><span class="p">[</span><span class="n">start_row</span><span class="p">:,</span> <span class="p">:]</span>
+            <span class="n">img</span><span class="p">[</span><span class="n">h1</span><span class="o">-</span><span class="n">start_row</span><span class="p">:,:</span><span class="n">w2</span><span class="p">]</span> <span class="o">=</span> <span class="n">img2</span><span class="p">[:,</span> <span class="p">:]</span>
+            <span class="n">img</span> <span class="o">=</span> <span class="n">pad_img</span><span class="p">(</span><span class="n">img</span><span class="p">,</span> <span class="n">max_tile_size</span> <span class="o">*</span> <span class="n">number_of_rows</span><span class="p">,</span> <span class="n">max_tile_size</span> <span class="o">*</span> <span class="n">number_of_cols</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">img</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">img</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">h1</span> <span class="o">-</span> <span class="n">start_row</span> <span class="o">+</span> <span class="n">diff</span><span class="p">,</span> <span class="nb">max</span><span class="p">(</span><span class="n">w1</span><span class="p">,</span> <span class="n">w2</span><span class="p">),</span> <span class="mi">3</span><span class="p">),</span> <span class="mi">255</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
+            <span class="n">img</span><span class="p">[:</span><span class="n">h1</span><span class="o">-</span><span class="n">start_row</span><span class="p">,</span> <span class="p">:</span><span class="n">w1</span><span class="p">]</span> <span class="o">=</span> <span class="n">img1</span><span class="p">[</span><span class="n">start_row</span><span class="p">:,</span> <span class="p">:]</span>
+            <span class="n">img</span><span class="p">[</span><span class="n">h1</span><span class="o">-</span><span class="n">start_row</span><span class="p">:,:</span><span class="n">w2</span><span class="p">]</span> <span class="o">=</span> <span class="n">img2</span><span class="p">[:</span><span class="n">diff</span><span class="p">,</span> <span class="p">:]</span>
+            <span class="n">img</span> <span class="o">=</span> <span class="n">pad_img</span><span class="p">(</span><span class="n">img</span><span class="p">,</span> <span class="n">max_tile_size</span> <span class="o">*</span> <span class="n">number_of_rows</span><span class="p">,</span> <span class="n">max_tile_size</span> <span class="o">*</span> <span class="n">number_of_cols</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">img</span><span class="p">,</span> <span class="n">diff</span></div>
+
+<div class="viewcode-block" id="write_subtable_image"><a class="viewcode-back" href="../../../Tiler.html#cloud_browser.tiler.views.write_subtable_image">[docs]</a><span class="k">def</span> <span class="nf">write_subtable_image</span><span class="p">(</span><span class="n">pil_img</span><span class="p">,</span> <span class="n">subtable_path</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">    Writes subtable images to disk. Called by worker threads.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        pil_img (PIL.Image): a python image library image</span>
+<span class="sd">        subtable_path (str): File path where the image should be written</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        None</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">pil_img</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">subtable_path</span><span class="p">,</span> <span class="s1">&#39;jpeg&#39;</span><span class="p">,</span> <span class="n">quality</span><span class="o">=</span><span class="mi">60</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">{0}</span><span class="s2"> written&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">subtable_path</span><span class="p">))</span></div>
+
+<div class="viewcode-block" id="worker"><a class="viewcode-back" href="../../../Tiler.html#cloud_browser.tiler.views.worker">[docs]</a><span class="k">def</span> <span class="nf">worker</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">    A worker abstraction that iterates over the write queue and performs the tasks present in it.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="n">item</span> <span class="o">=</span> <span class="n">write_q</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">item</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">break</span>
+        <span class="n">write_subtable_image</span><span class="p">(</span><span class="n">item</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">item</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">write_q</span><span class="o">.</span><span class="n">task_done</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="add_subtable_entries"><a class="viewcode-back" href="../../../Tiler.html#cloud_browser.tiler.views.add_subtable_entries">[docs]</a><span class="k">def</span> <span class="nf">add_subtable_entries</span><span class="p">(</span><span class="n">document</span><span class="p">,</span> <span class="n">csv_name</span><span class="p">,</span> <span class="n">start_st_no</span><span class="p">,</span> <span class="n">images</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">    Adds bulk database entries corresponding to a list of subtable images. Database entry for each subtable images</span>
+<span class="sd">    contains the number of rows and columns in that image. This is useful for quickly mapping tile requests to subtable</span>
+<span class="sd">    images.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        document (Document): Document Object corresponding to the file&#39;s record in the database</span>
+<span class="sd">        csv_name (string): Name of the csv file</span>
+<span class="sd">        start_st_no (int): Subtable number corresponding to the first image in the list</span>
+<span class="sd">        images (List): A list of subtable images stored as numpy matrices</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        None</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">entries</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">img</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">images</span><span class="p">):</span>
+        <span class="n">tile_size</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">**</span> <span class="mi">12</span>
+        <span class="n">nrows</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">img</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">/</span><span class="n">tile_size</span><span class="p">))</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2</span> <span class="o">**</span> <span class="mi">4</span><span class="p">)</span> 
+        <span class="n">ncols</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">img</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">/</span><span class="n">tile_size</span><span class="p">))</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2</span> <span class="o">**</span> <span class="mi">4</span><span class="p">)</span>
+        <span class="n">entries</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">TiledDocument</span><span class="p">(</span><span class="n">document</span><span class="o">=</span><span class="n">document</span><span class="p">,</span> <span class="n">subtable_number</span><span class="o">=</span><span class="n">start_st_no</span><span class="o">+</span><span class="n">i</span><span class="p">,</span>
+            <span class="n">tile_count_on_x</span><span class="o">=</span><span class="n">ncols</span><span class="p">,</span> <span class="n">tile_count_on_y</span><span class="o">=</span><span class="n">nrows</span><span class="p">,</span> <span class="n">total_tile_count</span><span class="o">=</span><span class="n">ncols</span><span class="o">*</span><span class="n">nrows</span><span class="p">))</span>
+
+    <span class="n">TiledDocument</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">bulk_create</span><span class="p">(</span><span class="n">entries</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="pad_img"><a class="viewcode-back" href="../../../Tiler.html#cloud_browser.tiler.views.pad_img">[docs]</a><span class="k">def</span> <span class="nf">pad_img</span><span class="p">(</span><span class="n">img</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">w</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">    Utility function in order to pad out an image to the required size</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        img (numpy.ndarray): An image as a numpy ndarray</span>
+<span class="sd">        h (int): height of padded image</span>
+<span class="sd">        w (int): width of padded image</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        The padded image as a numpy array</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">height</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="n">channels</span> <span class="o">=</span> <span class="n">img</span><span class="o">.</span><span class="n">shape</span>
+    <span class="n">new_img</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">h</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">channels</span><span class="p">),</span> <span class="mi">221</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
+    <span class="n">new_img</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="n">height</span><span class="p">,</span> <span class="mi">0</span><span class="p">:</span><span class="n">width</span><span class="p">]</span> <span class="o">=</span> <span class="n">img</span>
+    <span class="k">return</span> <span class="n">new_img</span></div>
+
+<div class="viewcode-block" id="empty_response"><a class="viewcode-back" href="../../../Tiler.html#cloud_browser.tiler.views.empty_response">[docs]</a><span class="k">def</span> <span class="nf">empty_response</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">    Utility function for returning an empty tile as a HTTPResponse</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">red</span> <span class="o">=</span> <span class="n">Image</span><span class="o">.</span><span class="n">new</span><span class="p">(</span><span class="s1">&#39;RGBA&#39;</span><span class="p">,</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="mi">255</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+    <span class="n">response</span> <span class="o">=</span> <span class="n">HttpResponse</span><span class="p">(</span><span class="n">content_type</span><span class="o">=</span><span class="s2">&quot;image/png&quot;</span><span class="p">)</span>
+    <span class="n">red</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">response</span><span class="p">,</span> <span class="s2">&quot;png&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">response</span></div>
+
+<div class="viewcode-block" id="error_response"><a class="viewcode-back" href="../../../Tiler.html#cloud_browser.tiler.views.error_response">[docs]</a><span class="k">def</span> <span class="nf">error_response</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">    Utility function for returning a red tile as an error response</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">red</span> <span class="o">=</span> <span class="n">Image</span><span class="o">.</span><span class="n">new</span><span class="p">(</span><span class="s1">&#39;RGB&#39;</span><span class="p">,</span> <span class="p">(</span><span class="mi">256</span><span class="p">,</span> <span class="mi">256</span><span class="p">),</span> <span class="p">(</span><span class="mi">255</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+    <span class="n">response</span> <span class="o">=</span> <span class="n">HttpResponse</span><span class="p">(</span><span class="n">content_type</span><span class="o">=</span><span class="s2">&quot;image/jpg&quot;</span><span class="p">)</span>
+    <span class="n">red</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">response</span><span class="p">,</span> <span class="s2">&quot;jpeg&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">response</span></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper"><div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../../index.html">Documentation overview</a><ul>
+  <li><a href="../../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2018, Kaushik.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.6.6</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.10</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

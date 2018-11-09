@@ -1,0 +1,232 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>cloud_browser.mapui.views &#8212; cloud_browser  documentation</title>
+    <link rel="stylesheet" href="../../../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+   
+  <link rel="stylesheet" href="../../../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head>
+  <body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for cloud_browser.mapui.views</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">os</span><span class="o">,</span> <span class="nn">shutil</span>
+
+<span class="kn">from</span> <span class="nn">django.conf</span> <span class="k">import</span> <span class="n">settings</span>
+<span class="kn">from</span> <span class="nn">django.http</span> <span class="k">import</span> <span class="n">HttpResponse</span><span class="p">,</span> <span class="n">JsonResponse</span>
+<span class="kn">from</span> <span class="nn">django.shortcuts</span> <span class="k">import</span> <span class="n">render</span>
+<span class="kn">from</span> <span class="nn">django.db.models</span> <span class="k">import</span> <span class="n">Sum</span>
+<span class="kn">from</span> <span class="nn">django.utils.decorators</span> <span class="k">import</span> <span class="n">method_decorator</span>
+<span class="kn">from</span> <span class="nn">django.views.decorators.csrf</span> <span class="k">import</span> <span class="n">csrf_exempt</span>
+
+<span class="c1">#from tiler.models.Document import Document, TiledDocument</span>
+<span class="c1">#from tiler.views import convert_html</span>
+<span class="kn">import</span> <span class="nn">json</span>
+
+<span class="n">max_usage</span> <span class="o">=</span> <span class="mi">25000</span>
+
+<span class="k">def</span> <span class="nf">index</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">HttpResponse</span><span class="p">(</span><span class="s2">&quot;Hello, world. You&#39;re at the map ui index.&quot;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="leaflet"><a class="viewcode-back" href="../../../MapUI.html#cloud_browser.mapui.views.leaflet">[docs]</a><span class="k">def</span> <span class="nf">leaflet</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">    Responds to requests to the csv viewer. Renders html for the csv viewer.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        request (HTTPRequest): a http request object</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        HTTPResponse containing html for the leaflet JS based csv viewer </span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">file_name</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">GET</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;file&quot;</span><span class="p">)</span>
+
+    <span class="n">rows</span><span class="p">,</span> <span class="n">columns</span> <span class="o">=</span> <span class="n">check_csv</span><span class="p">(</span><span class="n">file_name</span><span class="p">)</span>
+
+    <span class="n">output_name</span> <span class="o">=</span> <span class="n">file_name</span><span class="p">[:</span><span class="o">-</span><span class="mi">4</span><span class="p">]</span> <span class="o">+</span> <span class="s2">&quot;.html&quot;</span>
+    <span class="n">context</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;file&#39;</span><span class="p">:</span> <span class="n">file_name</span><span class="p">,</span> <span class="s1">&#39;rows&#39;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">rows</span><span class="p">),</span> <span class="s1">&#39;columns&#39;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">columns</span><span class="p">)}</span>
+    <span class="k">return</span> <span class="n">render</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="s1">&#39;leaflet_map.html&#39;</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="tilecount"><a class="viewcode-back" href="../../../MapUI.html#cloud_browser.mapui.views.tilecount">[docs]</a><span class="k">def</span> <span class="nf">tilecount</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">    Utility function used by the front end slider defined in &#39;leaflet_map.html&#39;. Returns the number of</span>
+<span class="sd">    rows of tiles available for the current csv. This value is returned to the client.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        request (HTTPRequest): a http request object</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Json response containing the number of tiles available for the current csv</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">file_name</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">GET</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;file&quot;</span><span class="p">)</span>
+    <span class="n">tilecount</span> <span class="o">=</span> <span class="n">TiledDocument</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">document__file_name</span><span class="o">=</span><span class="n">file_name</span><span class="p">)</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span><span class="n">Sum</span><span class="p">(</span><span class="s1">&#39;tile_count_on_y&#39;</span><span class="p">))[</span><span class="s1">&#39;tile_count_on_y__sum&#39;</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">JsonResponse</span><span class="p">({</span><span class="s1">&#39;tilecount&#39;</span><span class="p">:</span> <span class="n">tilecount</span><span class="p">})</span></div>
+
+<span class="c1">#@method_decorator(csrf_exempt)</span>
+<div class="viewcode-block" id="delete"><a class="viewcode-back" href="../../../MapUI.html#cloud_browser.mapui.views.delete">[docs]</a><span class="k">def</span> <span class="nf">delete</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">    Response function for a post request to delete a csv file. The csrf_exempt decorator is required in</span>
+<span class="sd">    order for a post requested generated without a form to work correctly.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        request (HTTPRequest): a http request object</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Success message</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">file_name</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">POST</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;file_name&quot;</span><span class="p">)</span>
+    <span class="n">Document</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">file_name</span><span class="o">=</span><span class="n">file_name</span><span class="p">)</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+
+    <span class="n">dir_name</span> <span class="o">=</span> <span class="n">file_name</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="o">-</span><span class="mi">4</span><span class="p">]</span>
+    <span class="n">shutil</span><span class="o">.</span><span class="n">rmtree</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">MEDIA_ROOT</span><span class="p">,</span> <span class="s1">&#39;tiles&#39;</span><span class="p">,</span> <span class="n">dir_name</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">HttpResponse</span><span class="p">(</span><span class="s2">&quot;Success&quot;</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="check_csv"><a class="viewcode-back" href="../../../MapUI.html#cloud_browser.mapui.views.check_csv">[docs]</a><span class="k">def</span> <span class="nf">check_csv</span><span class="p">(</span><span class="n">file_name</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">    Check if subtable images for requested csv are present on disk, else create them.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        filename (str): Name of the csv file</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        The number of rows and number of columns in the csv file</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">doc</span> <span class="o">=</span> <span class="n">Document</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">file_name</span><span class="o">=</span><span class="n">file_name</span><span class="p">)</span>
+    <span class="n">rows</span><span class="p">,</span> <span class="n">columns</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">MEDIA_ROOT</span><span class="p">,</span> <span class="s1">&#39;tiles&#39;</span><span class="p">,</span> <span class="n">file_name</span><span class="p">[:</span><span class="o">-</span><span class="mi">4</span><span class="p">])):</span>
+        <span class="c1">#check_disk_usage()</span>
+        <span class="n">rows</span><span class="p">,</span> <span class="n">columns</span> <span class="o">=</span> <span class="n">convert_html</span><span class="p">(</span><span class="n">doc</span><span class="p">,</span> <span class="n">file_name</span><span class="p">)</span>
+        <span class="n">doc</span><span class="o">.</span><span class="n">rows</span> <span class="o">=</span> <span class="n">rows</span>
+        <span class="n">doc</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="n">columns</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">rows</span> <span class="o">=</span> <span class="n">doc</span><span class="o">.</span><span class="n">rows</span>
+        <span class="n">columns</span> <span class="o">=</span> <span class="n">doc</span><span class="o">.</span><span class="n">columns</span>
+    <span class="n">doc</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">rows</span><span class="p">,</span> <span class="n">columns</span></div>
+
+<div class="viewcode-block" id="check_disk_usage"><a class="viewcode-back" href="../../../MapUI.html#cloud_browser.mapui.views.check_disk_usage">[docs]</a><span class="k">def</span> <span class="nf">check_disk_usage</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">    Check if disk usage exceeds the maximum allowed. If yes, delete subtable images of csv</span>
+<span class="sd">    files in least recently used order until disk usage is below the maximum.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">csv_sizes</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">total_size</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">dir_name</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">MEDIA_ROOT</span><span class="p">,</span> <span class="s1">&#39;tiles&#39;</span><span class="p">)):</span>
+        <span class="n">size</span> <span class="o">=</span> <span class="n">get_directory_size</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">MEDIA_ROOT</span><span class="p">,</span> <span class="s1">&#39;tiles&#39;</span><span class="p">,</span> <span class="n">dir_name</span><span class="p">))</span>
+        <span class="n">total_size</span> <span class="o">=</span> <span class="n">size</span> <span class="o">+</span> <span class="n">total_size</span>
+        <span class="n">csv_sizes</span><span class="p">[</span><span class="n">dir_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">size</span>
+
+    <span class="k">if</span> <span class="n">total_size</span> <span class="o">&lt;</span> <span class="n">max_usage</span><span class="p">:</span>
+        <span class="k">return</span>
+    <span class="n">accesses</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="k">for</span> <span class="n">csv_name</span> <span class="ow">in</span> <span class="n">csv_sizes</span><span class="p">:</span>
+        <span class="n">doc</span> <span class="o">=</span> <span class="n">Document</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">file_name</span><span class="o">=</span><span class="n">csv_name</span><span class="o">+</span><span class="s1">&#39;.csv&#39;</span><span class="p">)</span>
+        <span class="n">accesses</span><span class="p">[</span><span class="n">doc</span><span class="o">.</span><span class="n">last_access</span><span class="p">]</span> <span class="o">=</span> <span class="n">csv_name</span>
+
+    <span class="k">while</span> <span class="n">total_size</span> <span class="o">&gt;</span> <span class="n">max_usage</span><span class="p">:</span>
+        <span class="n">oldest</span> <span class="o">=</span> <span class="n">accesses</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="n">accesses</span><span class="o">.</span><span class="n">keys</span><span class="p">()))</span>
+        <span class="n">shutil</span><span class="o">.</span><span class="n">rmtree</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">MEDIA_ROOT</span><span class="p">,</span> <span class="s1">&#39;tiles&#39;</span><span class="p">,</span> <span class="n">oldest</span><span class="p">))</span>
+        <span class="n">total_size</span> <span class="o">=</span> <span class="n">total_size</span> <span class="o">-</span> <span class="n">csv_sizes</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">oldest</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="get_directory_size"><a class="viewcode-back" href="../../../MapUI.html#cloud_browser.mapui.views.get_directory_size">[docs]</a><span class="k">def</span> <span class="nf">get_directory_size</span><span class="p">(</span><span class="n">dir_path</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">    Utility function to get the size of a directory</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        dir_path (str): Path to the directory</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Size of directory in MB</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">total_size</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">path</span><span class="p">,</span> <span class="n">dirs</span><span class="p">,</span> <span class="n">files</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">walk</span><span class="p">(</span><span class="n">dir_path</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">files</span><span class="p">:</span>
+            <span class="n">fp</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span>
+            <span class="n">total_size</span> <span class="o">=</span> <span class="n">total_size</span> <span class="o">+</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">getsize</span><span class="p">(</span><span class="n">fp</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">total_size</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1024</span> <span class="o">*</span> <span class="mi">1024</span><span class="p">)</span></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper"><div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../../index.html">Documentation overview</a><ul>
+  <li><a href="../../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2018, Kaushik.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.6.6</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.10</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>
