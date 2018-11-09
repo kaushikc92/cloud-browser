@@ -1,0 +1,186 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>MapUI &#8212; cloud_browser  documentation</title>
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="Tiler" href="Tiler.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head>
+  <body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="module-cloud_browser.mapui.views">
+<span id="mapui"></span><h1>MapUI<a class="headerlink" href="#module-cloud_browser.mapui.views" title="Permalink to this headline">¶</a></h1>
+<dl class="function">
+<dt id="cloud_browser.mapui.views.check_csv">
+<code class="descclassname">cloud_browser.mapui.views.</code><code class="descname">check_csv</code><span class="sig-paren">(</span><em>file_name</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/cloud_browser/mapui/views.html#check_csv"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#cloud_browser.mapui.views.check_csv" title="Permalink to this definition">¶</a></dt>
+<dd><p>Check if subtable images for requested csv are present on disk, else create them.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>filename</strong> (<em>str</em>) – Name of the csv file</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">The number of rows and number of columns in the csv file</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="cloud_browser.mapui.views.check_disk_usage">
+<code class="descclassname">cloud_browser.mapui.views.</code><code class="descname">check_disk_usage</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/cloud_browser/mapui/views.html#check_disk_usage"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#cloud_browser.mapui.views.check_disk_usage" title="Permalink to this definition">¶</a></dt>
+<dd><p>Check if disk usage exceeds the maximum allowed. If yes, delete subtable images of csv
+files in least recently used order until disk usage is below the maximum.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="cloud_browser.mapui.views.delete">
+<code class="descclassname">cloud_browser.mapui.views.</code><code class="descname">delete</code><span class="sig-paren">(</span><em>request</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/cloud_browser/mapui/views.html#delete"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#cloud_browser.mapui.views.delete" title="Permalink to this definition">¶</a></dt>
+<dd><p>Response function for a post request to delete a csv file. The csrf_exempt decorator is required in
+order for a post requested generated without a form to work correctly.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>request</strong> (<em>HTTPRequest</em>) – a http request object</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">Success message</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="cloud_browser.mapui.views.get_directory_size">
+<code class="descclassname">cloud_browser.mapui.views.</code><code class="descname">get_directory_size</code><span class="sig-paren">(</span><em>dir_path</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/cloud_browser/mapui/views.html#get_directory_size"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#cloud_browser.mapui.views.get_directory_size" title="Permalink to this definition">¶</a></dt>
+<dd><p>Utility function to get the size of a directory</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>dir_path</strong> (<em>str</em>) – Path to the directory</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">Size of directory in MB</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="cloud_browser.mapui.views.leaflet">
+<code class="descclassname">cloud_browser.mapui.views.</code><code class="descname">leaflet</code><span class="sig-paren">(</span><em>request</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/cloud_browser/mapui/views.html#leaflet"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#cloud_browser.mapui.views.leaflet" title="Permalink to this definition">¶</a></dt>
+<dd><p>Responds to requests to the csv viewer. Renders html for the csv viewer.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>request</strong> (<em>HTTPRequest</em>) – a http request object</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">HTTPResponse containing html for the leaflet JS based csv viewer</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="cloud_browser.mapui.views.tilecount">
+<code class="descclassname">cloud_browser.mapui.views.</code><code class="descname">tilecount</code><span class="sig-paren">(</span><em>request</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/cloud_browser/mapui/views.html#tilecount"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#cloud_browser.mapui.views.tilecount" title="Permalink to this definition">¶</a></dt>
+<dd><p>Utility function used by the front end slider defined in ‘leaflet_map.html’. Returns the number of
+rows of tiles available for the current csv. This value is returned to the client.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>request</strong> (<em>HTTPRequest</em>) – a http request object</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">Json response containing the number of tiles available for the current csv</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper"><div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="Tiler.html" title="previous chapter">Tiler</a></li>
+  </ul></li>
+</ul>
+</div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/MapUI.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2018, Kaushik.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.6.6</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.10</a>
+      
+      |
+      <a href="_sources/MapUI.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

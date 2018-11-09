@@ -1,0 +1,395 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Tiler &#8212; cloud_browser  documentation</title>
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="MapUI" href="MapUI.html" />
+    <link rel="prev" title="User Manual" href="User.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head>
+  <body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="module-cloud_browser.tiler.views">
+<span id="tiler"></span><h1>Tiler<a class="headerlink" href="#module-cloud_browser.tiler.views" title="Permalink to this headline">¶</a></h1>
+<dl class="function">
+<dt id="cloud_browser.tiler.views.add_subtable_entries">
+<code class="descclassname">cloud_browser.tiler.views.</code><code class="descname">add_subtable_entries</code><span class="sig-paren">(</span><em>document</em>, <em>csv_name</em>, <em>start_st_no</em>, <em>images</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/cloud_browser/tiler/views.html#add_subtable_entries"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#cloud_browser.tiler.views.add_subtable_entries" title="Permalink to this definition">¶</a></dt>
+<dd><p>Adds bulk database entries corresponding to a list of subtable images. Database entry for each subtable images
+contains the number of rows and columns in that image. This is useful for quickly mapping tile requests to subtable
+images.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>document</strong> (<em>Document</em>) – Document Object corresponding to the file’s record in the database</li>
+<li><strong>csv_name</strong> (<em>string</em>) – Name of the csv file</li>
+<li><strong>start_st_no</strong> (<em>int</em>) – Subtable number corresponding to the first image in the list</li>
+<li><strong>images</strong> (<em>List</em>) – A list of subtable images stored as numpy matrices</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">None</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="cloud_browser.tiler.views.convert_html">
+<code class="descclassname">cloud_browser.tiler.views.</code><code class="descname">convert_html</code><span class="sig-paren">(</span><em>document</em>, <em>csv_name</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/cloud_browser/tiler/views.html#convert_html"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#cloud_browser.tiler.views.convert_html" title="Permalink to this definition">¶</a></dt>
+<dd><p>Creates the subtable image for the initial few rows of the csv, adds a database record for it
+if it isn’t already present. The function then hands off the task of creating the remaining subtable
+images to convert_remaining_html and returns, thus allowing users to browse the initial rows of the
+csv while the rest of it is being processed.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>document</strong> (<em>tiler.Document</em>) – Document Object corresponding to the file’s record in the database</li>
+<li><strong>csv_name</strong> (<em>string</em>) – Name of the csv file</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">Number of rows and columns in the csv</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="cloud_browser.tiler.views.convert_remaining_html">
+<code class="descclassname">cloud_browser.tiler.views.</code><code class="descname">convert_remaining_html</code><span class="sig-paren">(</span><em>document</em>, <em>csv_name</em>, <em>csv</em>, <em>rows_per_image</em>, <em>max_width</em>, <em>img1</em>, <em>start_row</em>, <em>add_entries</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/cloud_browser/tiler/views.html#convert_remaining_html"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#cloud_browser.tiler.views.convert_remaining_html" title="Permalink to this definition">¶</a></dt>
+<dd><p>Creates subtable images for the remaining rows in the csv. The csv is converted to a set of images by calls to
+multi-threaded calls to convert_subtable_html using batches. The converted
+images are joined with the top portion of the next image by create_subtable_image in order to create evenly sized
+tiles. Writing each such subtable image to disk is considered a task and is added to a write queue. A number of worker
+threads are started. Each worker thread picks a task from the write queue and performs it.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>document</strong> (<em>tiler.Document</em>) – Document object corresponding to the csv file’s record in the database</li>
+<li><strong>csv_name</strong> (<em>string</em>) – Name of the csv file</li>
+<li><strong>rows_per_image</strong> (<em>int</em>) – Number of rows of the csv file to be included in each subtable image</li>
+<li><strong>max_width</strong> (<em>int</em>) – Pixel width of the html table to be generated</li>
+<li><strong>img1</strong> (<em>numpy.ndarray</em>) – The last image partially processed by convert_html as a numpy array</li>
+<li><strong>start_row</strong> (<em>int</em>) – The pixel height upto which the last image was processed</li>
+<li><strong>add_entries</strong> (<em>bool</em>) – False if database entries already exist for the subtable image dimensions</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">None</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="cloud_browser.tiler.views.convert_subtable_html">
+<code class="descclassname">cloud_browser.tiler.views.</code><code class="descname">convert_subtable_html</code><span class="sig-paren">(</span><em>df</em>, <em>csv_name</em>, <em>subtable_number</em>, <em>max_width</em>, <em>results=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/cloud_browser/tiler/views.html#convert_subtable_html"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#cloud_browser.tiler.views.convert_subtable_html" title="Permalink to this definition">¶</a></dt>
+<dd><p>Converts a dataframe into an image. The dataframe is first converted to html and the html is the converted to an
+image using the ‘from_string’ of wkhtmltoimage library. The image is read into a numpy array and returned or
+stored into a results array if provided. The results array option is used when the function is used with
+multi-threading to convert a batch of html tables into images. Each worker thread writes the resulting image into
+the slot specified for it by the subtable number.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>df</strong> (<em>Pandas.DataFrame</em>) – Pandas dataframe holding the subtable data</li>
+<li><strong>csv_name</strong> (<em>string</em>) – Name of the csv file</li>
+<li><strong>subtable_number</strong> (<em>int</em>) – The subtable number used for indexing into the results array</li>
+<li><strong>max_width</strong> (<em>int</em>) – </li>
+<li><strong>results</strong> (<em>list</em>) – A list into which results are written at the slot indicated by the subtable number</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">An image as a numpy array if a results list is provided as an argument. Else returns None.</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="cloud_browser.tiler.views.create_subtable_image">
+<code class="descclassname">cloud_browser.tiler.views.</code><code class="descname">create_subtable_image</code><span class="sig-paren">(</span><em>img1</em>, <em>img2</em>, <em>start_row</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/cloud_browser/tiler/views.html#create_subtable_image"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#cloud_browser.tiler.views.create_subtable_image" title="Permalink to this definition">¶</a></dt>
+<dd><p>Creates subtable images with dimensions that are mutliples of tiles sizes at the lowest zoom level. Takes
+in two images as numpy arrays and rounds out the first image by concatenating the top part of the second
+image.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>img1</strong> (<em>numpy.ndarray</em>) – First image</li>
+<li><strong>img2</strong> (<em>numpy.ndarray</em>) – Second image</li>
+<li><strong>start_row</strong> (<em>int</em>) – Pixel row number on the first image from where the subtable image should begin</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first"><p>tuple containing:</p>
+<blockquote>
+<div><dl class="docutils">
+<dt>img (numpy.ndarray): A vertically concatenated and horizontally padded image with dimensions that are</dt>
+<dd><p class="first last">multiples of the largest tile size.</p>
+</dd>
+<dt>diff (int): Number of rows of pixels from the second image that are concatenated with the first image.</dt>
+<dd><p class="first last">-1 is returned if the second image does not exist or if it does not have sufficient rows of
+pixels to pad out the first image.</p>
+</dd>
+</dl>
+</div></blockquote>
+</p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">(tuple)</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="cloud_browser.tiler.views.empty_response">
+<code class="descclassname">cloud_browser.tiler.views.</code><code class="descname">empty_response</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/cloud_browser/tiler/views.html#empty_response"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#cloud_browser.tiler.views.empty_response" title="Permalink to this definition">¶</a></dt>
+<dd><p>Utility function for returning an empty tile as a HTTPResponse</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="cloud_browser.tiler.views.error_response">
+<code class="descclassname">cloud_browser.tiler.views.</code><code class="descname">error_response</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/cloud_browser/tiler/views.html#error_response"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#cloud_browser.tiler.views.error_response" title="Permalink to this definition">¶</a></dt>
+<dd><p>Utility function for returning a red tile as an error response</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="cloud_browser.tiler.views.get_subtable_dimensions">
+<code class="descclassname">cloud_browser.tiler.views.</code><code class="descname">get_subtable_dimensions</code><span class="sig-paren">(</span><em>csv</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/cloud_browser/tiler/views.html#get_subtable_dimensions"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#cloud_browser.tiler.views.get_subtable_dimensions" title="Permalink to this definition">¶</a></dt>
+<dd><p>Processes structure and data within csv files in order to calculate how many rows to use per subtable
+image and the width that should be set for the generated html table.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>csv</strong> (<em>Pandas.DataFrame</em>) – CSV data stored in a pandas dataframe</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">The number of rows per image and width of html table to be generated</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="cloud_browser.tiler.views.get_subtable_number">
+<code class="descclassname">cloud_browser.tiler.views.</code><code class="descname">get_subtable_number</code><span class="sig-paren">(</span><em>file_name</em>, <em>x</em>, <em>y</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/cloud_browser/tiler/views.html#get_subtable_number"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#cloud_browser.tiler.views.get_subtable_number" title="Permalink to this definition">¶</a></dt>
+<dd><p>Given coordinates of a tile, this function computes the subtable image number for the requested tile.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>file_name</strong> (<em>str</em>) – Name of the csv file</li>
+<li><strong>x</strong> (<em>int</em>) – The x coordinate of the tile at the highest zoom level</li>
+<li><strong>y</strong> (<em>int</em>) – The y coordinate of the tile at the highest zoom level</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">The subtable image number that the requested tile belongs to and the y coordinate,  adjusted relative
+to the coordinate system centered at top left corner of the subtable image. -1 is returned for the
+image number if no tile image is available for the requested coordinates. No change is required for
+the x coordinate.</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="cloud_browser.tiler.views.pad_img">
+<code class="descclassname">cloud_browser.tiler.views.</code><code class="descname">pad_img</code><span class="sig-paren">(</span><em>img</em>, <em>h</em>, <em>w</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/cloud_browser/tiler/views.html#pad_img"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#cloud_browser.tiler.views.pad_img" title="Permalink to this definition">¶</a></dt>
+<dd><p>Utility function in order to pad out an image to the required size</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>img</strong> (<em>numpy.ndarray</em>) – An image as a numpy ndarray</li>
+<li><strong>h</strong> (<em>int</em>) – height of padded image</li>
+<li><strong>w</strong> (<em>int</em>) – width of padded image</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">The padded image as a numpy array</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="cloud_browser.tiler.views.progress">
+<code class="descclassname">cloud_browser.tiler.views.</code><code class="descname">progress</code><span class="sig-paren">(</span><em>request</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/cloud_browser/tiler/views.html#progress"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#cloud_browser.tiler.views.progress" title="Permalink to this definition">¶</a></dt>
+<dd><p>Backend service for the upload file progress bar. Updates are made to the global variables
+‘progressValue’ and ‘progressStatus’ during the subtable image generation process. These updates
+are sent to the client side by this function</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>request</strong> (<em>HTTPRequestObject</em>) – A http request object</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">A JSON response containing a status message and a progress percentage for csv uploads.</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="cloud_browser.tiler.views.tile_request">
+<code class="descclassname">cloud_browser.tiler.views.</code><code class="descname">tile_request</code><span class="sig-paren">(</span><em>request</em>, <em>id</em>, <em>z</em>, <em>x</em>, <em>y</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/cloud_browser/tiler/views.html#tile_request"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#cloud_browser.tiler.views.tile_request" title="Permalink to this definition">¶</a></dt>
+<dd><p>Tile service that responds to leaflet JS tile requests. Takes in x, y coordinates and
+zoom level of requested tiles and returns the appropriate tile. Tiling is done in memory.
+Each request is mapped to the appropriate subtable image. If the image is already available
+in memory, appropriate tile is cut out and returned as a JPEG, else the image is loaded into
+memory first. As multiple simultaneous tile requests are made to the same subtable image, a
+lock is used to ensure that only one thread reads the image from disk into memory. The other
+threads spin wait for this thread to complete and then use the loaded image.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>request</strong> (<em>HTTPRequestObject</em>) – Object that encapsulates the HTTP Request to tiler</li>
+<li><strong>x</strong> (<em>int</em>) – x coordinate of tile</li>
+<li><strong>y</strong> (<em>int</em>) – y coordinate of tile</li>
+<li><strong>z</strong> (<em>int</em>) – Zoom level of tile</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">HTTPResponse Object containing the tile image</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="cloud_browser.tiler.views.worker">
+<code class="descclassname">cloud_browser.tiler.views.</code><code class="descname">worker</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/cloud_browser/tiler/views.html#worker"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#cloud_browser.tiler.views.worker" title="Permalink to this definition">¶</a></dt>
+<dd><p>A worker abstraction that iterates over the write queue and performs the tasks present in it.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="cloud_browser.tiler.views.write_subtable_image">
+<code class="descclassname">cloud_browser.tiler.views.</code><code class="descname">write_subtable_image</code><span class="sig-paren">(</span><em>pil_img</em>, <em>subtable_path</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/cloud_browser/tiler/views.html#write_subtable_image"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#cloud_browser.tiler.views.write_subtable_image" title="Permalink to this definition">¶</a></dt>
+<dd><p>Writes subtable images to disk. Called by worker threads.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>pil_img</strong> (<em>PIL.Image</em>) – a python image library image</li>
+<li><strong>subtable_path</strong> (<em>str</em>) – File path where the image should be written</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">None</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper"><div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="User.html" title="previous chapter">User Manual</a></li>
+      <li>Next: <a href="MapUI.html" title="next chapter">MapUI</a></li>
+  </ul></li>
+</ul>
+</div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/Tiler.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2018, Kaushik.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.6.6</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.10</a>
+      
+      |
+      <a href="_sources/Tiler.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
